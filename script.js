@@ -359,9 +359,8 @@ function analyzeOCRResult(result) {
     }
 
     Object.assign(resultData, { ...selected, is_good: false, lowConfWords: lowConfWords });
-}
 
-return resultData;
+    return resultData;
 }
 
 
