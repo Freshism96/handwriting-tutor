@@ -108,10 +108,12 @@ function processImage() {
             correctionAction.textContent = analysis.correction_action;
 
             // 3. Overlay Simulation
-            drawOverlaySimulation(analysis);
+            // Pass tempCanvas (the clean image) to be drawn on the output canvas
+            drawOverlaySimulation(analysis, tempCanvas);
 
             // 4. Render Side-by-Side Comparison
-            renderComparisonCards(analysis);
+            // Pass tempCanvas to crop from the CLEAN image
+            renderComparisonCards(analysis, tempCanvas);
 
 
             // Transition to Result View
@@ -234,9 +236,16 @@ function analyzeOCRResult(result) {
 
 
 
-function drawOverlaySimulation(diagnosis) {
+function drawOverlaySimulation(diagnosis, sourceImage) {
     const canvas = document.getElementById('canvas-output');
     const ctx = canvas.getContext('2d');
+
+    // 0. Draw the captured image first (Reset canvas)
+    if (sourceImage) {
+        canvas.width = sourceImage.width;
+        canvas.height = sourceImage.height;
+        ctx.drawImage(sourceImage, 0, 0);
+    }
 
     // 1. Draw Confidence Boxes (Traffic Light System) and Corrective Overlay
     // ALWAYS draw this, regardless of good/bad result, so user can see what happened.
@@ -317,13 +326,15 @@ function drawOverlaySimulation(diagnosis) {
     ctx.restore();
 }
 
-function renderComparisonCards(diagnosis) {
+function renderComparisonCards(diagnosis, sourceCanvas) {
     const listContainer = document.getElementById('comparison-list');
     listContainer.innerHTML = ''; // Clear previous
 
     if (!diagnosis.allWords || diagnosis.allWords.length === 0) return;
 
-    const sourceCanvas = document.getElementById('canvas-output');
+    // sourceCanvas is passed in now (the clean original image)
+    // Fallback just in case
+    if (!sourceCanvas) sourceCanvas = document.getElementById('canvas-output');
 
     diagnosis.allWords.forEach(word => {
         const conf = word.confidence;
