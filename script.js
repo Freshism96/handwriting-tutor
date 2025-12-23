@@ -94,8 +94,7 @@ function processImage() {
                 'kor',
                 {
                     logger: m => {
-                        // Update spinner text with progress if possible, or just log
-                        console.log(m);
+                        updateSortOfProgress(m);
                     }
                 }
             );
@@ -249,3 +248,31 @@ function drawOverlaySimulation(diagnosis) {
     ctx.restore();
 }
 
+
+function updateSortOfProgress(message) {
+    const progressEl = document.getElementById('progress-detail');
+    if (!progressEl) return;
+
+    let statusText = message.status;
+    const progress = Math.round(message.progress * 100);
+
+    // Map common Tesseract statuses to Korean
+    if (statusText === 'loading tesseract core') {
+        statusText = 'AI 두뇌를 깨우는 중...';
+    } else if (statusText === 'initializing api') {
+        statusText = '준비 운동 하는 중...';
+    } else if (statusText === 'recognizing text') {
+        statusText = '글씨를 자세히 보는 중...';
+    } else if (statusText === 'loading language traineddata') {
+        statusText = '한국어 공부장을 펼치는 중...';
+    } else {
+        // Fallback for other statuses
+        statusText = '열심히 생각하는 중...';
+    }
+
+    if (message.status === 'done') {
+        progressEl.textContent = '분석 완료!';
+    } else {
+        progressEl.textContent = `${statusText} (${progress}%)`;
+    }
+}

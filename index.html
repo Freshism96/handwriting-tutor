@@ -1,68 +1,75 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI 바른 글씨 튜터</title>
     <!-- Importing Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Dongle:wght@300;400;700&family=Nanum+Gothic:wght@400;700;800&family=Nanum+Myeongjo:wght@400;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Dongle:wght@300;400;700&family=Nanum+Gothic:wght@400;700;800&family=Nanum+Myeongjo:wght@400;700&display=swap"
+        rel="stylesheet">
     <!-- OpenCV.js -->
-    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"
+        type="text/javascript"></script>
     <!-- Tesseract.js -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
 
-<div class="container">
-    <header>
-        <h1>✏️ 바른 글씨 튜터</h1>
-    </header>
+    <div class="container">
+        <header>
+            <h1>✏️ 바른 글씨 튜터</h1>
+        </header>
 
-    <main>
-        <!-- Start Screen -->
-        <div id="landing-page">
-            <div class="mascot">🤖</div>
-            <h2>안녕? 난 글씨 선생님이야!</h2>
-            <p>공책을 찍으면 멋진 글씨로 바꿔줄게.</p>
-            <button id="start-btn" class="btn-primary">시작하기</button>
-        </div>
+        <main>
+            <!-- Start Screen -->
+            <div id="landing-page">
+                <div class="mascot">🤖</div>
+                <h2>안녕? 난 글씨 선생님이야!</h2>
+                <p>공책을 찍으면 멋진 글씨로 바꿔줄게.</p>
+                <button id="start-btn" class="btn-primary">시작하기</button>
+            </div>
 
-        <!-- Camera Screen -->
-        <div id="camera-view" class="hidden">
-            <div class="camera-container">
-                <video id="video-preview" autoplay playsinline muted></video>
-                <div class="roi-overlay">
-                    <div class="overlay-instruction">네모 칸 안에 글씨가 꽉 차게 찍어줘!</div>
+            <!-- Camera Screen -->
+            <div id="camera-view" class="hidden">
+                <div class="camera-container">
+                    <video id="video-preview" autoplay playsinline muted></video>
+                    <div class="roi-overlay">
+                        <div class="overlay-instruction">네모 칸 안에 글씨가 꽉 차게 찍어줘!</div>
+                    </div>
                 </div>
-            </div>
-            <button id="capture-btn" class="btn-primary">📸 찰칵!</button>
-        </div>
-
-        <!-- Processing / Loading -->
-        <div id="processing-view" class="loader-container hidden">
-            <div class="emoji-spinner">🤔</div>
-            <h3>글씨를 살펴보고 있어...</h3>
-        </div>
-
-        <!-- Result Screen -->
-        <div id="result-view" class="hidden">
-            <div class="camera-container">
-                <canvas id="canvas-output"></canvas>
-            </div>
-            
-            <div class="result-card">
-                <h3 id="feedback-title" class="feedback-title">결과 분석 중...</h3>
-                <p id="feedback-detail" class="feedback-detail"></p>
-                <div id="correction-action" class="action-badge"></div>
+                <button id="capture-btn" class="btn-primary">📸 찰칵!</button>
             </div>
 
-            <button id="retry-btn" class="btn-primary">다시 찍기</button>
-        </div>
-    </main>
-</div>
+            <!-- Processing / Loading -->
+            <div id="processing-view" class="loader-container hidden">
+                <div class="emoji-spinner">🤔</div>
+                <h3>글씨를 살펴보고 있어...</h3>
+                <p id="progress-detail" style="margin-top: 10px; color: #666;"></p>
+            </div>
 
-<script src="data.js"></script>
-<script src="script.js"></script>
+            <!-- Result Screen -->
+            <div id="result-view" class="hidden">
+                <div class="camera-container">
+                    <canvas id="canvas-output"></canvas>
+                </div>
+
+                <div class="result-card">
+                    <h3 id="feedback-title" class="feedback-title">결과 분석 중...</h3>
+                    <p id="feedback-detail" class="feedback-detail"></p>
+                    <div id="correction-action" class="action-badge"></div>
+                </div>
+
+                <button id="retry-btn" class="btn-primary">다시 찍기</button>
+            </div>
+        </main>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
 </body>
+
 </html>
