@@ -52,8 +52,14 @@
             </div>
 
             <!-- Result Screen -->
-            <div id="result-view" class="hidden">
-                <div class="camera-container">
+            <div id="result-view" class="result-container hidden">
+                <!-- New: AI Interpretation Display -->
+                <div class="recognition-result-box">
+                    <span class="recog-label">AI가 읽은 글씨</span>
+                    <h2 id="ai-recognized-text" class="recog-text">...</h2>
+                </div>
+
+                <div class="canvas-wrapper">
                     <canvas id="canvas-output"></canvas>
                 </div>
 

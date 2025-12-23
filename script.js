@@ -88,9 +88,13 @@ function processImage() {
     // Simulate async processing
     setTimeout(async () => {
         try {
-            // 1.5. Run Tesseract OCR (Real Analysis)
+            // 1.2 Preprocess Image for OCR (Black & White)
+            // We use the 'tempCanvas' (Color) for UI display, but create a 'processedCanvas' for AI
+            const processedCanvas = preprocessImage(tempCanvas);
+
+            // 1.5. Run Tesseract OCR on PROCESSED image
             const ocrResult = await Tesseract.recognize(
-                tempCanvas,
+                processedCanvas,
                 'kor',
                 {
                     logger: m => {
@@ -115,6 +119,9 @@ function processImage() {
             // Pass tempCanvas to crop from the CLEAN image
             renderComparisonCards(analysis, tempCanvas);
 
+            // 5. Update Recognition Header
+            const finalRecogText = analysis.recognizedText ? analysis.recognizedText.replace(/\n/g, " ").trim() : "인식 실패";
+            document.getElementById('ai-recognized-text').textContent = finalRecogText || "(글씨가 안 보여요)";
 
             // Transition to Result View
             processingView.classList.add('hidden');
@@ -122,12 +129,49 @@ function processImage() {
 
         } catch (e) {
             console.error(e);
-            alert("이미지 처리에 실패했어요." + e.message);
+            alert("이미지 처리에 실패했어요. " + e.message);
             processingView.classList.add('hidden');
             cameraView.classList.remove('hidden');
             startCamera();
         }
     }, 100); // reduced delay as OCR takes time
+}
+
+/**
+ * Preprocess image using OpenCV for better OCR results
+ * 1. Grayscale
+ * 2. Adaptive Thresholding (Binarization)
+ */
+function preprocessImage(originalCanvas) {
+    if (!cvReady) return originalCanvas; // Fallback
+
+    try {
+        const src = cv.imread(originalCanvas);
+        const dst = new cv.Mat();
+
+        // 1. Convert to Grayscale
+        cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+
+        // 2. Apply Adaptive Thresholding (makes text black, paper white)
+        // src, dst, maxVal, adaptiveMethod, thresholdType, blockSize, C
+        cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 10);
+
+        // Output to a new canvas
+        const processedCanvas = document.createElement('canvas');
+        processedCanvas.width = originalCanvas.width;
+        processedCanvas.height = originalCanvas.height;
+        cv.imshow(processedCanvas, dst); // Use OpenCV's imshow to render Mat to Canvas
+
+        // Clean up
+        src.delete();
+        dst.delete();
+
+        return processedCanvas;
+
+    } catch (e) {
+        console.error("OpenCV Preprocessing failed:", e);
+        return originalCanvas; // Fallback to original
+    }
 }
 
 function analyzeOCRResult(result) {
