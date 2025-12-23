@@ -86,7 +86,7 @@ function processImage() {
     ctx.drawImage(videoPreview, 0, 0, videoWidth, videoHeight);
 
     // Simulate async processing
-    setTimeout(() => {
+    setTimeout(async () => {
         try {
             // 1.5. Run Tesseract OCR (Real Analysis)
             const ocrResult = await Tesseract.recognize(
