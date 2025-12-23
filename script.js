@@ -168,9 +168,19 @@ function preprocessImage(originalCanvas) {
         // 1. Convert to Grayscale
         cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
 
+        // 1.5. Gaussian Blur (Noise Reduction) - Crucial for removing paper texture/dots
+        let ksize = new cv.Size(5, 5);
+        cv.GaussianBlur(src, src, ksize, 0, 0, cv.BORDER_DEFAULT);
+
         // 2. Apply Adaptive Thresholding (makes text black, paper white)
         // src, dst, maxVal, adaptiveMethod, thresholdType, blockSize, C
         cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 10);
+
+        // 2.5. Morphological Open (Remove small noise specks)
+        // let M = cv.Mat.ones(3, 3, cv.CV_8U);
+        // let anchor = new cv.Point(-1, -1);
+        // cv.morphologyEx(dst, dst, cv.MORPH_OPEN, M, anchor, 1, cv.BORDER_CONSTANT, cv.morphologyDefaultBorderValue());
+        // M.delete();
 
         // Output to a new canvas
         const processedCanvas = document.createElement('canvas');
@@ -196,49 +206,80 @@ function analyzeOCRResult(result) {
     // Low Confidence (< 75) -> Bad
 
     // Calculate average confidence of words
+    // Calculate average confidence of words
+    // Filter Step: Ignore tiny noise (dots/specks) and extremely low confidence garbage
+    const validWords = result.data.words.filter(word => {
+        const w = word.bbox.x1 - word.bbox.x0;
+        const h = word.bbox.y1 - word.bbox.y0;
+        // Optimization: Ignore if detection is smaller than 20x20px or confidence is < 40% (Noise)
+        return (w > 20 && h > 20 && word.confidence > 40);
+    });
+
     let totalConf = 0;
     let wordCount = 0;
     const lowConfWords = [];
 
-    result.data.words.forEach(word => {
+    validWords.forEach(word => {
         totalConf += word.confidence;
         wordCount++;
-        if (word.confidence < 75) {
+        // Optimization: Leniency upgrade. 
+        // If > 60, it's considered "Okay". If < 60, it needs practice.
+        if (word.confidence < 60) {
             lowConfWords.push(word.bbox);
         }
     });
 
+    // If no valid words found, treat as 0 confidence
     const avgConf = wordCount > 0 ? (totalConf / wordCount) : 0;
-    const textLength = result.data.text.trim().length;
 
-    console.log(`Average Confidence: ${avgConf}, Text Length: ${textLength}`);
+    // Optimization: Lowered threshold from 75 to 60 to be more encouraging
+    const handwritingQualityThreshold = 60;
 
-    // ANALYSIS: Geometric Checks for Bad Handwriting
-    let specificBadTypeId = null;
-    let detectionDetail = "";
+    // Extract recognized text for display
+    const recognizedText = validWords.map(w => w.text).join(' ');
 
-    if (avgConf < 75) {
-        // 1. Check for Rollercoaster (Vertical variance)
-        // Calculate variance of 'baseline' (bottom of bbox)
-        if (wordCount > 2) {
-            const baselines = result.data.words.map(w => w.bbox.y1);
+    console.log(`Analyzed ${wordCount} words. Avg Conf: ${avgConf}`);
+
+    // Select Feedback based on Analysis
+    let selected;
+    if (avgConf >= handwritingQualityThreshold && recognizedText.length > 0) {
+        // GOOD handwriting
+        const randomIndex = Math.floor(Math.random() * feedbackData.good_handwriting_types.length);
+        selected = feedbackData.good_handwriting_types[randomIndex];
+
+        return {
+            ...selected,
+            is_good: true,
+            allWords: validWords, // Pass all words for consistent visualization
+            recognizedText: recognizedText
+        };
+    } else {
+        // BAD handwriting
+        // 1. Geometric Analysis (Rollercoaster, Congested, etc.)
+        // We only analyze geometry if we have enough words (>= 3)
+        let geometricType = null;
+        let detectionDetail = "";
+        if (wordCount >= 3) {
+            // 1. Check for Rollercoaster (Vertical variance)
+            // Calculate variance of 'baseline' (bottom of bbox)
+            const baselines = validWords.map(w => w.bbox.y1);
             const meanBaseline = baselines.reduce((a, b) => a + b, 0) / baselines.length;
             const variance = baselines.reduce((a, b) => a + Math.pow(b - meanBaseline, 2), 0) / baselines.length;
             const stdDev = Math.sqrt(variance);
 
             // Heuristic threshold for waviness (relative to line height approx 50px?)
             if (stdDev > 20) {
-                specificBadTypeId = 1; // Rollercoaster
+                geometricType = 1; // Rollercoaster
                 detectionDetail = "글자 높낮이가 들쑥날쑥해요.";
             }
-        }
+        } // Closing the 'if (wordCount >= 3)' block properly
 
         // 2. Check for Crowded (Horizontal gap) if not Rollercoaster
-        if (!specificBadTypeId && wordCount > 1) {
+        if (!geometricType && wordCount > 1) {
             let totalGap = 0;
             let gapCount = 0;
-            // Sort by x position just in case
-            const sortedWords = [...result.data.words].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+            // Sort validWords (not result.data.words) by x position
+            const sortedWords = [...validWords].sort((a, b) => a.bbox.x0 - b.bbox.x0);
 
             for (let i = 0; i < sortedWords.length - 1; i++) {
                 const curr = sortedWords[i];
@@ -251,7 +292,7 @@ function analyzeOCRResult(result) {
 
             // If gap is very small or negative (overlap)
             if (avgGap < 5) {
-                specificBadTypeId = 2; // Crowded
+                geometricType = 2; // Crowded
                 detectionDetail = "글자들이 너무 붙어있어요.";
             }
         }
@@ -275,17 +316,22 @@ function analyzeOCRResult(result) {
     } else {
         // BAD
         let selected;
-        if (specificBadTypeId) {
-            selected = appData.bad_handwriting_types.find(t => t.id === specificBadTypeId);
-            if (!selected) {
-                const badTypes = appData.bad_handwriting_types;
+        // If we detected a specific geometric type, use that ID.
+        // Otherwise, pick a random "Bad" type (excluding 1 & 2 ideally, or just random)
+        if (geometricType) {
+            // Find the feedback item with this ID
+            selected = feedbackData.bad_handwriting_types.find(t => t.id === geometricType);
+            if (!selected) { // Fallback if ID not found (shouldn't happen if IDs are consistent)
+                const badTypes = feedbackData.bad_handwriting_types;
                 selected = badTypes[Math.floor(Math.random() * badTypes.length)];
             }
             selected = { ...selected, feedback_detail: selected.feedback_detail + ` (${detectionDetail})` };
         } else {
-            const badTypes = appData.bad_handwriting_types;
-            const randomIndex = Math.floor(Math.random() * badTypes.length);
-            selected = badTypes[randomIndex];
+            // Random bad feedback (excluding geometric ones if we want, or just random)
+            // Let's exclude 1 & 2 for random to avoid confusion if we didn't detect them
+            const nonGeometricBad = feedbackData.bad_handwriting_types.filter(t => t.id !== 1 && t.id !== 2);
+            const randomIndex = Math.floor(Math.random() * nonGeometricBad.length);
+            selected = nonGeometricBad[randomIndex];
         }
 
         Object.assign(resultData, { ...selected, is_good: false, lowConfWords: lowConfWords });
