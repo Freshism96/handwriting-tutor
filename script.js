@@ -43,16 +43,32 @@ async function startCamera() {
     try {
         const constraints = {
             video: {
-                facingMode: 'environment', // Rear camera preferred
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
+                facingMode: 'environment', // Rear camera
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                // Request auto-focus
+                advanced: [{ focusMode: 'continuous' }]
             }
         };
+
         videoStream = await navigator.mediaDevices.getUserMedia(constraints);
         videoPreview.srcObject = videoStream;
+
+        // Attempt to apply focus mode explicitly if supported
+        const track = videoStream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities();
+        if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+            await track.applyConstraints({
+                advanced: [{ focusMode: 'continuous' }]
+            });
+            console.log("Auto-focus enabled");
+        }
+
+        cameraView.classList.remove('hidden');
+        processingView.classList.add('hidden');
     } catch (err) {
-        console.error("Camera access denied or error:", err);
-        alert("카메라를 켤 수 없어요. 권한을 확인해주세요!");
+        console.error("Camera Error:", err);
+        alert("카메라를 켤 수 없어요. 권한을 확인해주세요.");
     }
 }
 
