@@ -403,10 +403,12 @@ function renderComparisonCards(diagnosis, sourceCanvas) {
         else if (conf >= 60) cardClass = 'okay';
 
         // 1. Crop Image
-        const x = Math.max(0, word.bbox.x0 - 5); // padding
-        const y = Math.max(0, word.bbox.y0 - 5);
-        const w = Math.min(sourceCanvas.width - x, (word.bbox.x1 - word.bbox.x0) + 10);
-        const h = Math.min(sourceCanvas.height - y, (word.bbox.y1 - word.bbox.y0) + 10);
+        // Optimization: Use more padding (10px) to show surrounding context and prevent tight cuts
+        const padding = 10;
+        const x = Math.max(0, word.bbox.x0 - padding);
+        const y = Math.max(0, word.bbox.y0 - padding);
+        const w = Math.min(sourceCanvas.width - x, (word.bbox.x1 - word.bbox.x0) + (padding * 2));
+        const h = Math.min(sourceCanvas.height - y, (word.bbox.y1 - word.bbox.y0) + (padding * 2));
 
         // Create tmp canvas to put crop
         const cropCanvas = document.createElement('canvas');

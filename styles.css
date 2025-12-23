@@ -261,9 +261,13 @@ main {
   margin-bottom: 5px;
 }
 
-.handwriting-crop {
+.canvas-wrapper canvas {
+  display: block;
   max-width: 100%;
-  max-height: 80px;
+  height: auto;
+  /* Optimization: Limit height to show comparison cards below */
+  max-height: 25vh;
+  /* Further reduced from 40vh */
   object-fit: contain;
 }
 
