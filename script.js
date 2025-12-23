@@ -193,40 +193,39 @@ function analyzeOCRResult(result) {
 
 
     // LOGIC: High score AND some text detected -> GOOD
+    const resultData = {
+        is_good: false,
+        allWords: result.data.words,
+        recognizedText: result.data.text
+    };
+
     if (avgConf >= 75 && textLength > 0) {
         // Select a random "Good" type
         const goodTypes = appData.good_handwriting_types;
         const randomIndex = Math.floor(Math.random() * goodTypes.length);
         const selected = goodTypes[randomIndex];
-        // Carry over OCR data for overlay if needed (not needed for good)
-        return { ...selected, is_good: true };
+
+        Object.assign(resultData, { ...selected, is_good: true });
     } else {
         // BAD
         let selected;
         if (specificBadTypeId) {
             selected = appData.bad_handwriting_types.find(t => t.id === specificBadTypeId);
             if (!selected) {
-                // Fallback if ID not found
                 const badTypes = appData.bad_handwriting_types;
                 selected = badTypes[Math.floor(Math.random() * badTypes.length)];
             }
-            // Append specific detection note
             selected = { ...selected, feedback_detail: selected.feedback_detail + ` (${detectionDetail})` };
         } else {
-            // Random Bad Type if no specific geometry found but confidence is low
             const badTypes = appData.bad_handwriting_types;
             const randomIndex = Math.floor(Math.random() * badTypes.length);
             selected = badTypes[randomIndex];
         }
 
-        // Return type with added bbox data for red boxes AND all words for overlay
-        return {
-            ...selected,
-            is_good: false,
-            lowConfWords: lowConfWords, // Pass coordinates of messy words
-            allWords: result.data.words // Pass all words for corrective overlay
-        };
+        Object.assign(resultData, { ...selected, is_good: false, lowConfWords: lowConfWords });
     }
+
+    return resultData;
 }
 
 
@@ -235,41 +234,54 @@ function drawOverlaySimulation(diagnosis) {
     const canvas = document.getElementById('canvas-output');
     const ctx = canvas.getContext('2d');
 
-    // 1. Draw Red Boxes for "Bad" areas (Real Bad Handwriting Check)
-    if (!diagnosis.is_good && diagnosis.lowConfWords && diagnosis.lowConfWords.length > 0) {
+    // 1. Draw Confidence Boxes (Traffic Light System) and Corrective Overlay
+    // ALWAYS draw this, regardless of good/bad result, so user can see what happened.
+    if (diagnosis.allWords && diagnosis.allWords.length > 0) {
         ctx.save();
-        ctx.strokeStyle = "red";
-        ctx.lineWidth = 4;
+        ctx.textBaseline = "top";
 
-        diagnosis.lowConfWords.forEach(bbox => {
-            // bbox: {x0, y0, x1, y1} from Tesseract
-            const x = bbox.x0;
-            const y = bbox.y0;
-            const w = bbox.x1 - bbox.x0;
-            const h = bbox.y1 - bbox.y0;
+        diagnosis.allWords.forEach(word => {
+            const x = word.bbox.x0;
+            const y = word.bbox.y0;
+            const w = word.bbox.x1 - word.bbox.x0;
+            const h = word.bbox.y1 - word.bbox.y0;
+            const conf = word.confidence;
 
+            // Determine Color
+            let color = "red"; // Default bad
+            if (conf >= 80) color = "#4CAF50"; // Green (Good)
+            else if (conf >= 60) color = "#FF9800"; // Orange (Okay)
+
+            // Draw Box
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
             ctx.strokeRect(x, y, w, h);
 
-            // Draw a little "Check" or "X" mark
-            ctx.fillStyle = "red";
-            ctx.font = "bold 20px Arial";
-            ctx.fillText("Check!", x, y - 5);
+            // Draw Confidence Score (Tiny)
+            ctx.fillStyle = color;
+            ctx.font = "bold 12px Arial";
+            ctx.fillText(Math.round(conf), x, y - 15);
+
+            // Draw Corrective Text Overlay (Blue, Semi-transparent)
+            // We draw this slightly offset or right on top
+            ctx.save();
+            ctx.font = "bold 40px 'Nanum Myeongjo'";
+            ctx.fillStyle = "rgba(0, 0, 255, 0.5)"; // Blue 50%
+            // Draw centered in the box logic if possible, or just x/y
+            // For simple code, we use x/y
+            ctx.fillText(word.text, x, y);
+            ctx.restore();
         });
         ctx.restore();
     }
 
-    // 2. Draw Corrective Overlay (Semi-transparent Blue Text)
-    if (!diagnosis.is_good && diagnosis.allWords && diagnosis.allWords.length > 0) {
+    // Draw Recognized Text Summary at bottom
+    if (diagnosis.recognizedText) {
         ctx.save();
-        ctx.font = "bold 40px 'Nanum Myeongjo'"; // Corrective font
-        ctx.fillStyle = "rgba(0, 0, 255, 0.4)"; // Semi-transparent Blue
-        ctx.textBaseline = "top"; // Draw from top to align with bbox
-
-        diagnosis.allWords.forEach(word => {
-            // Draw the text exactly where it was detected, but in nice font
-            // We adjust y slightly to overlay directly ON TOP of the ink
-            ctx.fillText(word.text, word.bbox.x0, word.bbox.y0);
-        });
+        ctx.font = "16px 'Nanum Gothic'";
+        ctx.fillStyle = "#333";
+        ctx.textAlign = "center";
+        ctx.fillText("AI 인식: " + diagnosis.recognizedText.replace(/\n/g, " "), canvas.width / 2, canvas.height - 20);
         ctx.restore();
     }
 
