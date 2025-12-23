@@ -97,5 +97,31 @@ const appData = {
             "feedback_detail": "글씨를 쓰다 말고 도망갔나요? 획의 끝까지 힘을 줘서 꾹 눌러 마무리해주세요.",
             "correction_action": "끝까지 꾹 눌러쓰기"
         }
+    ],
+    "good_handwriting_types": [
+        {
+            "id": 101,
+            "type_name": "명필형",
+            "is_good": true,
+            "feedback_title": "와! 명필이네요! 🏆",
+            "feedback_detail": "글씨가 정말 반듯하고 예뻐요. 마치 폰트로 인쇄한 것 같아요! 이대로만 계속 써주세요.",
+            "correction_action": "참 잘했어요!"
+        },
+        {
+            "id": 102,
+            "type_name": "또박또박형",
+            "is_good": true,
+            "feedback_title": "정말 또박또박 잘 썼어요! 🌟",
+            "feedback_detail": "한 글자 한 글자 정성을 다해 쓴 게 느껴져요. 선생님이 칭찬 도장을 쾅! 찍어줄게요.",
+            "correction_action": "멋져요!"
+        },
+        {
+            "id": 103,
+            "type_name": "황금비율형",
+            "is_good": true,
+            "feedback_title": "글씨 균형이 완벽해요! ✨",
+            "feedback_detail": "자음과 모음의 크기가 딱 적당하고 간격도 아주 좋아요. 글씨 쓰기 대장님이네요!",
+            "correction_action": "최고예요!"
+        }
     ]
 };

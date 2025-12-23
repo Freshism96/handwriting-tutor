@@ -105,15 +105,15 @@ function processImage() {
             // dst.delete(); // If used
 
             // 2. Random Diagnosis Simulation
-            const randomType = getRandomBadHandwritingType();
+            const diagnosis = getType();
 
             // Update UI with diagnosis
-            feedbackTitle.textContent = randomType.feedback_title;
-            feedbackDetail.textContent = randomType.feedback_detail;
-            correctionAction.textContent = randomType.correction_action;
+            feedbackTitle.textContent = diagnosis.feedback_title;
+            feedbackDetail.textContent = diagnosis.feedback_detail;
+            correctionAction.textContent = diagnosis.correction_action;
 
             // 3. Overlay Simulation (Drawing text on canvas)
-            drawOverlaySimulation();
+            drawOverlaySimulation(diagnosis);
 
             // Transition to Result View
             processingView.classList.add('hidden');
@@ -129,32 +129,68 @@ function processImage() {
     }, 1500); // 1.5s simulated delay
 }
 
-function getRandomBadHandwritingType() {
-    const types = appData.bad_handwriting_types;
-    const randomIndex = Math.floor(Math.random() * types.length);
-    return types[randomIndex];
+function getType() {
+    const badTypes = appData.bad_handwriting_types;
+    // 30% chance of being "Good"
+    const isGood = Math.random() < 0.3;
+
+    if (isGood && appData.good_handwriting_types) {
+        const goodTypes = appData.good_handwriting_types;
+        const randomIndex = Math.floor(Math.random() * goodTypes.length);
+        return goodTypes[randomIndex];
+    } else {
+        const randomIndex = Math.floor(Math.random() * badTypes.length);
+        return badTypes[randomIndex];
+    }
 }
 
-function drawOverlaySimulation() {
-    // This function simulates the "Corrected Text" overlay
-    // We'll just draw some "Nice Text" over the canvas for effect
+function drawOverlaySimulation(diagnosis) {
     const canvas = document.getElementById('canvas-output');
     const ctx = canvas.getContext('2d');
 
     ctx.save();
-    ctx.globalAlpha = 0.6; // 50-60% opacity
-    ctx.font = "bold 50px 'Nanum Gothic'";
-    ctx.fillStyle = "blue";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    // Just drawing a dummy "Corrected" text in the center
-    // In real app, this would be aligned with OCR bounding boxes
-    ctx.fillText("바른 글씨 예시", canvas.width / 2, canvas.height / 2);
+    if (diagnosis.is_good) {
+        // Draw "Good Job" Stamp
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(-20 * Math.PI / 180); // Rotate -20 degrees
 
-    ctx.strokeStyle = "white";
-    ctx.lineWidth = 2;
-    ctx.strokeText("바른 글씨 예시", canvas.width / 2, canvas.height / 2);
+        // Stamp Border
+        ctx.beginPath();
+        ctx.arc(0, 0, 120, 0, Math.PI * 2);
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = "#FF5722"; // Stamp Red
+        ctx.stroke();
+
+        // Stamp Text
+        ctx.font = "bold 40px 'Nanum Gothic'";
+        ctx.fillStyle = "#FF5722";
+        ctx.fillText("참 잘했어요", 0, -20);
+
+        ctx.font = "30px 'Nanum Gothic'";
+        ctx.fillText("AI 선생님 확인", 0, 30);
+    } else {
+        // Draw "Corrected Example" Box for Bad Handwriting
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        // Semi-transparent background box for readability
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.roundRect(centerX - 150, centerY - 60, 300, 120, 20);
+        ctx.fill();
+
+        // Guide text (Subtitle)
+        ctx.font = "20px 'Nanum Gothic'";
+        ctx.fillStyle = "#FFD700"; // Gold
+        ctx.fillText("이렇게 써보세요!", centerX, centerY - 25);
+
+        // Correction Example (Main)
+        ctx.font = "bold 50px 'Nanum Gothic'";
+        ctx.fillStyle = "white";
+        ctx.fillText("바른 글씨 예시", centerX, centerY + 25);
+    }
 
     ctx.restore();
 }
