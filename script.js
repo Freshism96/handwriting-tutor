@@ -161,46 +161,65 @@ function processImage() {
 function preprocessImage(originalCanvas) {
     if (!cvReady) return originalCanvas; // Fallback
 
+    let src = null;
+    let dst = null;
+    let ksize = null;
+    // Morphological structures if used
+    // let M = null; 
+
     try {
-        const src = cv.imread(originalCanvas);
-        const dst = new cv.Mat();
+        src = cv.imread(originalCanvas);
+        dst = new cv.Mat();
 
         // 1. Convert to Grayscale
         cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
 
-        // 1.5. Gaussian Blur (Noise Reduction) - Crucial for removing paper texture/dots
-        let ksize = new cv.Size(5, 5);
+        // 1.5. Gaussian Blur (Noise Reduction)
+        ksize = new cv.Size(5, 5);
         cv.GaussianBlur(src, src, ksize, 0, 0, cv.BORDER_DEFAULT);
 
-        // 2. Apply Adaptive Thresholding (makes text black, paper white)
-        // src, dst, maxVal, adaptiveMethod, thresholdType, blockSize, C
+        // 2. Apply Adaptive Thresholding
         cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 10);
-
-        // 2.5. Morphological Open (Remove small noise specks)
-        // let M = cv.Mat.ones(3, 3, cv.CV_8U);
-        // let anchor = new cv.Point(-1, -1);
-        // cv.morphologyEx(dst, dst, cv.MORPH_OPEN, M, anchor, 1, cv.BORDER_CONSTANT, cv.morphologyDefaultBorderValue());
-        // M.delete();
 
         // Output to a new canvas
         const processedCanvas = document.createElement('canvas');
         processedCanvas.width = originalCanvas.width;
         processedCanvas.height = originalCanvas.height;
-        cv.imshow(processedCanvas, dst); // Use OpenCV's imshow to render Mat to Canvas
-
-        // Clean up
-        src.delete();
-        dst.delete();
+        cv.imshow(processedCanvas, dst);
 
         return processedCanvas;
 
     } catch (e) {
         console.error("OpenCV Preprocessing failed:", e);
         return originalCanvas; // Fallback to original
+    } finally {
+        // CLEANUP: extensive cleanup to prevent memory leaks
+        if (src) src.delete();
+        if (dst) dst.delete();
+        // ksize doesn't strictly need delete() in JS binding usually unless it's a specific object, 
+        // but checking docs suggests simple Structs might be GC'd, but Mat MUST be deleted. 
+        // However, cv.Size might invoke C++ alloc. 
+        // In opencv.js, Size is usually a simple object or needs deletion? 
+        // Safe bet: if it has delete, call it.
+        // Actually for opencv.js, Size/Point etc often don't need manual delete if they are just JS objects passed to functions,
+        // but 'new cv.Size' creates a heap object? Let's be safe if we can, but usually Mat is the big one.
     }
 }
 
 function analyzeOCRResult(result) {
+    // Safety Check
+    if (!result || !result.data || !result.data.words) {
+        console.error("Invalid OCR Result:", result);
+        return {
+            is_good: false,
+            lowConfWords: [],
+            feedback_title: "분석 오류",
+            feedback_detail: "글씨를 제대로 인식하지 못했어요.",
+            correction_action: "조금 더 밝은 곳에서 다시 찍어주세요.",
+            recognizedText: ""
+        };
+    }
+
     // Basic Heuristic:
     // High Confidence (> 75) + Meaningful Text length -> Good
     // Low Confidence (< 75) -> Bad
