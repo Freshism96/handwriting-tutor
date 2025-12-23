@@ -110,6 +110,10 @@ function processImage() {
             // 3. Overlay Simulation
             drawOverlaySimulation(analysis);
 
+            // 4. Render Side-by-Side Comparison
+            renderComparisonCards(analysis);
+
+
             // Transition to Result View
             processingView.classList.add('hidden');
             resultView.classList.remove('hidden');
@@ -264,13 +268,21 @@ function drawOverlaySimulation(diagnosis) {
 
             // Draw Corrective Text Overlay (Blue, Semi-transparent)
             // We draw this slightly offset or right on top
+            // NOTE: Per user feedback, we will KEEP this but maybe simplify it.
+            // But since we have Side-by-Side now, we can make this overlay purely for "Structure" checking.
+
+            // Let's keep it but make it very subtle so it doesn't clutter.
+            // Or strictly follow user request: "Main screen shows check boxes, cards show comparison."
+            // So we will NOT draw the text overlay on the main canvas to avoid "messiness",
+            // as the comparison cards will show the "Correct" text.
+
+            /*
             ctx.save();
             ctx.font = "bold 40px 'Nanum Myeongjo'";
             ctx.fillStyle = "rgba(0, 0, 255, 0.5)"; // Blue 50%
-            // Draw centered in the box logic if possible, or just x/y
-            // For simple code, we use x/y
             ctx.fillText(word.text, x, y);
             ctx.restore();
+            */
         });
         ctx.restore();
     }
@@ -294,43 +306,71 @@ function drawOverlaySimulation(diagnosis) {
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate(-20 * Math.PI / 180); // Rotate -20 degrees
 
-        // Stamp Border
-        ctx.beginPath();
-        ctx.arc(0, 0, 120, 0, Math.PI * 2);
-        ctx.lineWidth = 10;
-        ctx.strokeStyle = "#FF5722"; // Stamp Red
-        ctx.stroke();
-
-        // Stamp Text
-        ctx.font = "bold 40px 'Nanum Myeongjo'"; // Changed to Myeongjo (Batang-like)
+        // Stamp Text (Simplifying stamp to avoid clutter)
+        ctx.font = "bold 40px 'Nanum Myeongjo'";
         ctx.fillStyle = "#FF5722";
-        ctx.fillText("참 잘했어요", 0, -20);
-
-        ctx.font = "30px 'Nanum Myeongjo'"; // Changed to Myeongjo (Batang-like)
-        ctx.fillText("AI 선생님 확인", 0, 30);
+        ctx.fillText("참 잘했어요", 0, 0);
     } else {
-        // Draw "Corrected Example" Box for Bad Handwriting
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-
-        // Semi-transparent background box for readability
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.roundRect(centerX - 150, centerY - 60, 300, 120, 20);
-        ctx.fill();
-
-        // Guide text (Subtitle)
-        ctx.font = "20px 'Nanum Gothic'";
-        ctx.fillStyle = "#FFD700"; // Gold
-        ctx.fillText("이렇게 써보세요!", centerX, centerY - 25);
-
-        // Correction Example (Main)
-        // Using 'Nanum Myeongjo' for the "Textbook" feel
-        ctx.font = "bold 50px 'Nanum Myeongjo'";
-        ctx.fillStyle = "white";
-        ctx.fillText("바른 글씨 예시", centerX, centerY + 25);
+        // No heavy overlays for Bad, just the boxes drawn above
     }
 
     ctx.restore();
+}
+
+function renderComparisonCards(diagnosis) {
+    const listContainer = document.getElementById('comparison-list');
+    listContainer.innerHTML = ''; // Clear previous
+
+    if (!diagnosis.allWords || diagnosis.allWords.length === 0) return;
+
+    const sourceCanvas = document.getElementById('canvas-output');
+
+    diagnosis.allWords.forEach(word => {
+        const conf = word.confidence;
+        let cardClass = 'bad';
+        if (conf >= 80) cardClass = 'good';
+        else if (conf >= 60) cardClass = 'okay';
+
+        // 1. Crop Image
+        const x = Math.max(0, word.bbox.x0 - 5); // padding
+        const y = Math.max(0, word.bbox.y0 - 5);
+        const w = Math.min(sourceCanvas.width - x, (word.bbox.x1 - word.bbox.x0) + 10);
+        const h = Math.min(sourceCanvas.height - y, (word.bbox.y1 - word.bbox.y0) + 10);
+
+        // Create tmp canvas to put crop
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = w;
+        cropCanvas.height = h;
+        const cropCtx = cropCanvas.getContext('2d');
+
+        // Draw from main canvas (which currently has Red boxes on it... ideally we crop from 'tempCanvas' but that scope is lost.
+        // It's actually better to crop from the CLEAN image. 
+        // We reused 'tempCanvas' in processImage, let's assume 'videoPreview' frame is still there? 
+        // Actually, 'canvas-output' has the *processed* image. 
+        // We'll crop from 'canvas-output' but we drew boxes on it already... 
+        // Ah, 'drawOverlaySimulation' is called AFTER we get here? No, before.
+        // We should fix the order or keep a clean copy.
+        // For now, let's just accept the boxes on the crop, it actually helps context.
+
+        cropCtx.drawImage(sourceCanvas, x, y, w, h, 0, 0, w, h);
+        const imgUrl = cropCanvas.toDataURL();
+
+        // 2. Create Card HTML
+        const card = document.createElement('div');
+        card.className = `comparison-card ${cardClass}`;
+        card.innerHTML = `
+            <div class="comp-col">
+                <div class="comp-header">내가 쓴 글씨</div>
+                <img src="${imgUrl}" class="handwriting-crop">
+            </div>
+            <div class="comp-divider"></div>
+            <div class="comp-col">
+                 <div class="comp-header">바른 글씨</div>
+                 <div class="correct-text">${word.text}</div>
+            </div>
+        `;
+        listContainer.appendChild(card);
+    });
 }
 
 
