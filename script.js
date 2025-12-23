@@ -263,8 +263,8 @@ function analyzeOCRResult(result) {
     let selected;
     if (avgConf >= handwritingQualityThreshold && recognizedText.length > 0) {
         // GOOD handwriting
-        const randomIndex = Math.floor(Math.random() * feedbackData.good_handwriting_types.length);
-        selected = feedbackData.good_handwriting_types[randomIndex];
+        const randomIndex = Math.floor(Math.random() * appData.good_handwriting_types.length);
+        selected = appData.good_handwriting_types[randomIndex];
 
         return {
             ...selected,
@@ -339,24 +339,25 @@ function analyzeOCRResult(result) {
         // Otherwise, pick a random "Bad" type (excluding 1 & 2 ideally, or just random)
         if (geometricType) {
             // Find the feedback item with this ID
-            selected = feedbackData.bad_handwriting_types.find(t => t.id === geometricType);
+            selected = appData.bad_handwriting_types.find(t => t.id === geometricType);
             if (!selected) { // Fallback if ID not found (shouldn't happen if IDs are consistent)
-                const badTypes = feedbackData.bad_handwriting_types;
+                const badTypes = appData.bad_handwriting_types;
                 selected = badTypes[Math.floor(Math.random() * badTypes.length)];
             }
             selected = { ...selected, feedback_detail: selected.feedback_detail + ` (${detectionDetail})` };
         } else {
             // Random bad feedback (excluding geometric ones if we want, or just random)
             // Let's exclude 1 & 2 for random to avoid confusion if we didn't detect them
-            const nonGeometricBad = feedbackData.bad_handwriting_types.filter(t => t.id !== 1 && t.id !== 2);
+            const nonGeometricBad = appData.bad_handwriting_types.filter(t => t.id !== 1 && t.id !== 2);
             const randomIndex = Math.floor(Math.random() * nonGeometricBad.length);
             selected = nonGeometricBad[randomIndex];
         }
-
-        Object.assign(resultData, { ...selected, is_good: false, lowConfWords: lowConfWords });
     }
 
-    return resultData;
+    Object.assign(resultData, { ...selected, is_good: false, lowConfWords: lowConfWords });
+}
+
+return resultData;
 }
 
 
