@@ -147,6 +147,51 @@ function analyzeOCRResult(result) {
 
     console.log(`Average Confidence: ${avgConf}, Text Length: ${textLength}`);
 
+    // ANALYSIS: Geometric Checks for Bad Handwriting
+    let specificBadTypeId = null;
+    let detectionDetail = "";
+
+    if (avgConf < 75) {
+        // 1. Check for Rollercoaster (Vertical variance)
+        // Calculate variance of 'baseline' (bottom of bbox)
+        if (wordCount > 2) {
+            const baselines = result.data.words.map(w => w.bbox.y1);
+            const meanBaseline = baselines.reduce((a, b) => a + b, 0) / baselines.length;
+            const variance = baselines.reduce((a, b) => a + Math.pow(b - meanBaseline, 2), 0) / baselines.length;
+            const stdDev = Math.sqrt(variance);
+
+            // Heuristic threshold for waviness (relative to line height approx 50px?)
+            if (stdDev > 20) {
+                specificBadTypeId = 1; // Rollercoaster
+                detectionDetail = "글자 높낮이가 들쑥날쑥해요.";
+            }
+        }
+
+        // 2. Check for Crowded (Horizontal gap) if not Rollercoaster
+        if (!specificBadTypeId && wordCount > 1) {
+            let totalGap = 0;
+            let gapCount = 0;
+            // Sort by x position just in case
+            const sortedWords = [...result.data.words].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+
+            for (let i = 0; i < sortedWords.length - 1; i++) {
+                const curr = sortedWords[i];
+                const next = sortedWords[i + 1];
+                const gap = next.bbox.x0 - curr.bbox.x1;
+                totalGap += gap;
+                gapCount++;
+            }
+            const avgGap = gapCount > 0 ? totalGap / gapCount : 0;
+
+            // If gap is very small or negative (overlap)
+            if (avgGap < 5) {
+                specificBadTypeId = 2; // Crowded
+                detectionDetail = "글자들이 너무 붙어있어요.";
+            }
+        }
+    }
+
+
     // LOGIC: High score AND some text detected -> GOOD
     if (avgConf >= 75 && textLength > 0) {
         // Select a random "Good" type
@@ -157,16 +202,29 @@ function analyzeOCRResult(result) {
         return { ...selected, is_good: true };
     } else {
         // BAD
-        // Select a random "Bad" type for feedback text
-        const badTypes = appData.bad_handwriting_types;
-        const randomIndex = Math.floor(Math.random() * badTypes.length);
-        const selected = badTypes[randomIndex];
+        let selected;
+        if (specificBadTypeId) {
+            selected = appData.bad_handwriting_types.find(t => t.id === specificBadTypeId);
+            if (!selected) {
+                // Fallback if ID not found
+                const badTypes = appData.bad_handwriting_types;
+                selected = badTypes[Math.floor(Math.random() * badTypes.length)];
+            }
+            // Append specific detection note
+            selected = { ...selected, feedback_detail: selected.feedback_detail + ` (${detectionDetail})` };
+        } else {
+            // Random Bad Type if no specific geometry found but confidence is low
+            const badTypes = appData.bad_handwriting_types;
+            const randomIndex = Math.floor(Math.random() * badTypes.length);
+            selected = badTypes[randomIndex];
+        }
 
-        // Return type with added bbox data for red boxes
+        // Return type with added bbox data for red boxes AND all words for overlay
         return {
             ...selected,
             is_good: false,
-            lowConfWords: lowConfWords // Pass coordinates of messy words
+            lowConfWords: lowConfWords, // Pass coordinates of messy words
+            allWords: result.data.words // Pass all words for corrective overlay
         };
     }
 }
@@ -196,6 +254,21 @@ function drawOverlaySimulation(diagnosis) {
             ctx.fillStyle = "red";
             ctx.font = "bold 20px Arial";
             ctx.fillText("Check!", x, y - 5);
+        });
+        ctx.restore();
+    }
+
+    // 2. Draw Corrective Overlay (Semi-transparent Blue Text)
+    if (!diagnosis.is_good && diagnosis.allWords && diagnosis.allWords.length > 0) {
+        ctx.save();
+        ctx.font = "bold 40px 'Nanum Myeongjo'"; // Corrective font
+        ctx.fillStyle = "rgba(0, 0, 255, 0.4)"; // Semi-transparent Blue
+        ctx.textBaseline = "top"; // Draw from top to align with bbox
+
+        diagnosis.allWords.forEach(word => {
+            // Draw the text exactly where it was detected, but in nice font
+            // We adjust y slightly to overlay directly ON TOP of the ink
+            ctx.fillText(word.text, word.bbox.x0, word.bbox.y0);
         });
         ctx.restore();
     }
