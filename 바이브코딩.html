@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>시스템 디펜더: 산성비 모드</title>
+    <!-- Tailwind CSS (스타일링용) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 폰트 로드: VT323(픽셀 느낌), Noto Sans KR(한글) */
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #000; 
+            touch-action: none; 
+            font-family: 'Noto Sans KR', 'VT323', monospace; 
+            color: #0f0;
+        }
+        
+        /* CRT 모니터 스캔라인 효과 */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 100;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        /* 피격 시 붉은 화면 효과 */
+        #damage-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: red; opacity: 0; pointer-events: none; z-index: 90; transition: opacity 0.1s;
+        }
+
+        #gameCanvas { display: block; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; }
+        
+        .hud-text { text-shadow: 0 0 5px #0f0; pointer-events: auto; }
+
+        #timer-display {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            font-size: 40px; font-weight: bold; color: #fff; text-shadow: 0 0 10px #0f0; font-family: 'VT323';
+        }
+
+        /* 공통 오버레이 화면 스타일 (반응형) */
+        .overlay-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 50;
+            padding: 20px;
+        }
+
+        #game-over-screen { z-index: 110; }
+        #artifact-select-screen { z-index: 120; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); }
+
+        /* 상점 아이템 스타일 */
+        .shop-item {
+            border: 1px solid #0f0; padding: 10px; margin: 5px; 
+            width: 100%; max-width: 400px; 
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; transition: 0.2s; background: rgba(0, 20, 0, 0.5);
+        }
+        .shop-item:hover { background: #004400; }
+        .shop-btn {
+            background: #0f0; color: #000; border: none; padding: 5px 10px;
+            font-family: 'VT323', 'Noto Sans KR'; font-size: 18px; cursor: pointer; font-weight: bold;
+            white-space: nowrap;
+        }
+        .shop-btn:disabled { background: #555; cursor: not-allowed; }
+
+        /* 모드 선택 버튼 스타일 */
+        .mode-btn {
+            background: #000; color: #0f0; border: 2px solid #0f0; padding: 15px 30px; margin: 10px;
+            font-size: 20px; font-family: 'Noto Sans KR'; font-weight: bold; cursor: pointer; transition: 0.3s;
+            width: 100%; max-width: 200px;
+        }
+        .mode-btn:hover { background: #0f0; color: #000; box-shadow: 0 0 15px #0f0; }
+
+        /* 액션 버튼 스타일 */
+        .action-btn {
+            padding: 15px 30px; margin: 10px; font-size: 20px; cursor: pointer; border: 1px solid #0f0; background: #002200; color: #0f0;
+            font-family: 'Noto Sans KR'; font-weight: bold;
+        }
+        .action-btn:hover { background: #0f0; color: #000; }
+        
+        .btn-danger { border-color: #f00; color: #f00; background: #220000; }
+        .btn-danger:hover { background: #f00; color: #fff; }
+
+        /* 유물 카드 스타일 */
+        .artifact-card {
+            background: #001100; border: 2px solid #0f0; border-radius: 8px;
+            padding: 20px; margin: 10px; 
+            width: 100%; max-width: 200px; height: 250px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+            text-align: center; color: #0f0;
+        }
+        .artifact-card:hover {
+            transform: scale(1.05); box-shadow: 0 0 20px #0f0; background: #002200;
+        }
+        .artifact-icon { font-size: 40px; margin-bottom: 10px; }
+
+        /* 레벨업 메뉴 스타일 */
+        #upgrade-menu {
+            display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0, 20, 0, 0.95); padding: 20px; border: 2px solid #0f0;
+            box-shadow: 0 0 20px #0f0; text-align: center; pointer-events: auto; 
+            width: 90%; max-width: 400px; z-index: 20;
+        }
+        .upgrade-card-lvl {
+            background: #001100; margin: 10px 0; padding: 15px; border: 1px solid #0a0;
+            cursor: pointer; transition: 0.2s; color: #0f0;
+        }
+        .upgrade-card-lvl:hover { background: #0f0; color: #000; box-shadow: 0 0 10px #0f0; }
+
+        /* 유물 획득 알림 스타일 */
+        #artifact-notice {
+            position: absolute; top: 20%; width: 100%; text-align: center; font-size: 32px;
+            color: #ff0; text-shadow: 0 0 10px #ff0; opacity: 0; transition: opacity 0.5s; z-index: 40; pointer-events: none;
+        }
+
+        /* 모바일 키보드 버튼 (모바일 환경에서만 표시됨) */
+        #mobile-kb-btn {
+            display: none; 
+            position: absolute; bottom: 30px; right: 30px; 
+            width: 70px; height: 70px;
+            background: rgba(0, 255, 0, 0.3); 
+            border: 2px solid #0f0; border-radius: 50%;
+            color: #0f0; font-family: 'VT323'; font-size: 24px; 
+            pointer-events: auto; z-index: 100;
+            align-items: center; justify-content: center; 
+            backdrop-filter: blur(2px);
+            box-shadow: 0 0 10px #0f0;
+            cursor: pointer;
+        }
+        /* 터치 디바이스 미디어 쿼리 */
+        @media (hover: none) and (pointer: coarse) { 
+            #mobile-kb-btn { display: flex; } 
+        }
+        
+        .matrix-font { font-family: 'VT323', monospace; }
+        .kr-font { font-family: 'Noto Sans KR', sans-serif; }
+    </style>
+</head>
+<body>
+
+    <div id="damage-overlay"></div>
+
+    <!-- 1. 로그인 화면 -->
+    <div id="login-screen" class="overlay-screen">
+        <div class="text-4xl mb-4 text-green-500 font-bold kr-font text-center">다했니 시스템 디펜더</div>
+        <div class="text-xl text-green-700 mb-8 w-full max-w-md text-center kr-font">
+            > 고정형 방어 시스템 가동...<br>
+            > 외부 침입을 저지하십시오.<br>
+        </div>
+        <div class="text-2xl flex flex-col items-center gap-2">
+            <span class="text-green-500 kr-font">학생 코드 입력:</span>
+            <input type="text" id="student-code-input" class="bg-black border border-green-500 text-green-500 text-2xl font-mono uppercase w-48 text-center p-2" autofocus autocomplete="off" placeholder="CODE">
+        </div>
+        <div class="mt-4 text-sm text-gray-500 kr-font">엔터(Enter)를 눌러 접속하세요</div>
+    </div>
+
+    <!-- 2. 상점 및 모드 선택 화면 -->
+    <div id="shop-screen" class="overlay-screen" style="display:none;">
+        <div class="text-3xl text-yellow-400 mb-2 kr-font">시스템 상점</div>
+        <div class="text-xl text-green-600 mb-6 kr-font">보유 쿠키: <span id="user-cookies" class="text-white matrix-font">0</span></div>
+        <div id="shop-items" class="w-full flex flex-col items-center overflow-y-auto max-h-[50vh]"></div>
+        
+        <div class="mt-8 flex flex-col sm:flex-row gap-4 w-full justify-center items-center">
+            <button onclick="startGame('hangul')" class="mode-btn">
+                한글 타자 방어
+            </button>
+            <button onclick="startGame('math')" class="mode-btn">
+                구구단 방어
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. 게임 오버 화면 -->
+    <div id="game-over-screen" class="overlay-screen" style="display:none;">
+        <h1 class="text-red-600 text-5xl md:text-6xl font-bold kr-font mb-4 text-center" style="text-shadow: 0 0 20px red;">SYSTEM FAILURE</h1>
+        <div class="text-2xl text-green-500 kr-font mb-8">
+            최종 점수: <span id="final-score" class="text-white matrix-font text-3xl">0</span>
+        </div>
+        <div class="flex gap-4">
+            <button onclick="retryGame()" class="action-btn">다시 시도</button>
+            <button onclick="goToLobby()" class="action-btn btn-danger">로비로 이동</button>
+        </div>
+    </div>
+
+    <!-- 4. 유물 선택 화면 -->
+    <div id="artifact-select-screen" class="overlay-screen" style="display:none;">
+        <h2 class="text-3xl md:text-4xl text-yellow-400 font-bold kr-font mb-6 text-center">보급품 도착!</h2>
+        <div class="text-lg md:text-xl text-green-300 mb-8 kr-font text-center">시스템을 강화할 유물을 선택하세요.</div>
+        <div id="artifact-container" class="flex flex-wrap justify-center gap-4 overflow-y-auto max-h-[60vh]"></div>
+    </div>
+
+    <div id="artifact-notice" class="kr-font">유물 획득!</div>
+
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui-layer">
+        <div id="timer-display">05:00</div>
+        
+        <div class="absolute top-4 left-4 hud-text">
+            <div class="text-2xl md:text-3xl font-bold kr-font">LV.<span id="level-display" class="matrix-font">1</span></div>
+            <div class="w-48 md:w-64 h-4 md:h-6 bg-gray-900 border border-red-800 mt-2 relative">
+                <div id="hp-bar" class="h-full bg-red-600 w-full transition-all duration-200 opacity-90"></div>
+                <div class="absolute top-0 left-0 w-full h-full text-center text-[10px] md:text-xs leading-4 md:leading-6 text-white kr-font">HP</div>
+            </div>
+            <div class="w-48 md:w-64 h-3 md:h-4 bg-gray-900 border border-green-800 mt-1 relative">
+                <div id="exp-bar" class="h-full bg-green-600 w-0 transition-all duration-200 opacity-80"></div>
+            </div>
+            <div class="mt-2 text-lg md:text-xl kr-font">점수: <span id="kill-count" class="matrix-font">0</span></div>
+            <div class="mt-1 text-xs md:text-sm text-yellow-300 kr-font" id="artifact-list"></div>
+        </div>
+        
+        <div id="upgrade-menu">
+            <h2 class="text-2xl md:text-3xl text-green-400 font-bold mb-2 kr-font">시스템 업그레이드</h2>
+            <div class="text-sm text-green-800 mb-6 kr-font">새로운 보안 프로토콜을 선택하세요</div>
+            <div id="upgrade-options"></div>
+        </div>
+    </div>
+
+    <!-- 모바일 키보드 트리거 버튼 (아이콘: 키보드) -->
+    <div id="mobile-kb-btn">⌨️</div>
+    <!-- 실제 입력을 받는 숨겨진 input -->
+    <input type="text" id="mobile-input-trigger" style="position:absolute; opacity:0; top:-1000px; left:0;">
+
+<script>
+/**
+ * ------------------------------------------------------------------
+ * [중요] API KEY 설정
+ * 아래 'YOUR_API_KEY_HERE' 부분을 실제 다했니 Open API 키로 변경하세요.
+ * ------------------------------------------------------------------
+ */
+const DAHANI_API_KEY = '03fc676b700bf368ba2553202d590242e1e60438a0577b60'; 
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let screenWidth = window.innerWidth;
+let screenHeight = window.innerHeight;
+
+// 키 매핑 (데스크탑 물리 키보드용)
+const keyToHangul = {
+    'KeyQ': 'ㅂ', 'KeyW': 'ㅈ', 'KeyE': 'ㄷ', 'KeyR': 'ㄱ', 'KeyT': 'ㅅ', 'KeyY': 'ㅛ', 'KeyU': 'ㅕ', 'KeyI': 'ㅑ', 'KeyO': 'ㅐ', 'KeyP': 'ㅔ',
+    'KeyA': 'ㅁ', 'KeyS': 'ㄴ', 'KeyD': 'ㅇ', 'KeyF': 'ㄹ', 'KeyG': 'ㅎ', 'KeyH': 'ㅗ', 'KeyJ': 'ㅓ', 'KeyK': 'ㅏ', 'KeyL': 'ㅣ',
+    'KeyZ': 'ㅋ', 'KeyX': 'ㅌ', 'KeyC': 'ㅊ', 'KeyV': 'ㅍ', 'KeyB': 'ㅠ', 'KeyN': 'ㅜ', 'KeyM': 'ㅡ'
+};
+const codeToChar = {};
+for (let [code, char] of Object.entries(keyToHangul)) codeToChar[code] = char;
+for (let i = 0; i < 10; i++) {
+    codeToChar[`Digit${i}`] = i.toString();
+    codeToChar[`Numpad${i}`] = i.toString();
+}
+
+let userData = {
+    studentName: "Unknown",
+    cookies: 0,
+    purchases: { hpBoost: 0, dmgBoost: 0, critBoost: 0 }
+};
+
+// 유물 데이터
+const ARTIFACTS = [
+    { id: 'doubleShot', name: '더블 프로세서', icon: '⚡', desc: '공격 시 미사일을 한 번 더 발사합니다.' },
+    { id: 'splash', name: '바이러스 확산', icon: '🦠', desc: '처치 시 주변 적에게 데미지를 줍니다.' },
+    { id: 'poison', name: '메모리 누수', icon: '🧪', desc: '공격받은 적이 지속 데미지를 입습니다.' },
+    { id: 'freeze', name: '시스템 동결', icon: '❄️', desc: '적들의 접근 속도가 20% 느려집니다.' }, 
+    { id: 'leech', name: '데이터 흡수', icon: '🩸', desc: '적 처치 시 체력을 2 회복합니다.' },
+    { id: 'drone', name: '보안 드론', icon: '🤖', desc: '1초마다 자동으로 적을 공격합니다.' }
+];
+
+// 다했니 API 호출 함수 (에러 처리 강화)
+async function fetchDahaniUserData(studentCode) {
+    if (!DAHANI_API_KEY || DAHANI_API_KEY === '03fc676b700bf368ba2553202d590242e1e60438a0577b60') {
+        alert("API Key가 설정되지 않았습니다. 테스트 모드로 진행합니다.");
+        return { name: "테스트 학생", totalCookie: 1000 };
+    }
+    try {
+        const response = await fetch(`https://api.dahandin.com/openapi/v1/get/student/total?code=${studentCode}`, {
+            method: 'GET',
+            headers: { 'X-API-Key': DAHANI_API_KEY }
+        });
+        
+        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+
+        const result = await response.json();
+        if (result.result) {
+            return { name: result.data.name, totalCookie: result.data.totalCookie };
+        } else {
+            alert("학생 확인 실패: " + result.message);
+            return null;
+        }
+    } catch (error) {
+        console.error("API Error:", error);
+        alert("서버 연결에 실패했습니다.\n\n가능한 원인:\n1. API 키 오류\n2. 브라우저 보안(CORS) 차단\n\n[확인]을 누르면 '오프라인 테스트 모드'로 시작합니다.");
+        // 실패 시 테스트 모드로 자동 전환하여 게임 진행 가능하게 함
+        return { name: "오프라인 모드", totalCookie: 500 };
+    }
+}
+
+// 게임 상태 변수
+let gameState = 'login'; // login, shop, playing, leveled_up, game_over, artifact_select
+let gameMode = 'hangul'; 
+let frameCount = 0;
+let gameStartTime = 0;
+const GAME_DURATION = 5 * 60 * 1000; // 5분
+let lastDroneShot = 0;
+let rewardCount = 0; // 유물 보상 지급 횟수
+let pauseStartTime = 0; 
+let totalPausedTime = 0;
+
+const player = {
+    x: screenWidth / 2, y: screenHeight / 2,
+    radius: 12, color: '#0f0', 
+    hp: 100, maxHp: 100,
+    exp: 0, expToNextLevel: 10, level: 1,
+    damage: 60, 
+    critChance: 0, 
+    projectileSpeed: 20, 
+    invincibleTimer: 0, 
+    artifacts: {
+        doubleShot: false, splash: false, poison: false,
+        freeze: false, leech: false, drone: false   
+    }
+};
+
+let bullets = [];
+let enemies = [];
+let particles = [];
+let floatingTexts = [];
+
+// 화면 리사이즈
+function resize() {
+    screenWidth = window.innerWidth;
+    screenHeight = window.innerHeight;
+    canvas.width = screenWidth;
+    canvas.height = screenHeight;
+    if(gameState === 'playing') {
+        player.x = screenWidth / 2;
+        player.y = screenHeight / 2;
+    }
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- 이벤트 리스너: 로그인 & 상점 ---
+document.getElementById('student-code-input').addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+        const code = e.target.value.trim();
+        if(code.length > 0) {
+            const data = await fetchDahaniUserData(code);
+            if (data) {
+                userData.studentName = data.name;
+                userData.cookies = data.totalCookie;
+                openShop();
+            }
+        }
+    }
+});
+
+function openShop() {
+    gameState = 'shop';
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('game-over-screen').style.display = 'none'; 
+    const shopScreen = document.getElementById('shop-screen');
+    shopScreen.style.display = 'flex';
+    updateShopUI();
+}
+
+function updateShopUI() {
+    document.getElementById('user-cookies').innerText = userData.cookies;
+    const container = document.getElementById('shop-items');
+    container.innerHTML = '';
+    
+    const items = [
+        { id: 'hpBoost', name: '방화벽 증설 (HP)', cost: 2, desc: '최대 체력 +30', limit: 5 },
+        { id: 'dmgBoost', name: '백신 강화 (공격력)', cost: 3, desc: '공격력 +15', limit: 5 },
+        { id: 'critBoost', name: '정밀 타격 (치명타)', cost: 5, desc: '치명타 확률 +10%', limit: 5 }
+    ];
+    
+    items.forEach(item => {
+        const currentLvl = userData.purchases[item.id];
+        const div = document.createElement('div');
+        div.className = 'shop-item';
+        div.innerHTML = `
+            <div>
+                <div class="text-green-400 font-bold kr-font">${item.name} <span class="text-sm">(Lv.${currentLvl}/${item.limit})</span></div>
+                <div class="text-gray-400 text-sm kr-font">${item.desc}</div>
+            </div>
+            <div>
+                <div class="text-yellow-300 text-sm mb-1 matrix-font">${item.cost} C</div>
+                <button class="shop-btn" id="btn-${item.id}">구매</button>
+            </div>
+        `;
+        container.appendChild(div);
+        const btn = div.querySelector(`#btn-${item.id}`);
+        if (userData.cookies < item.cost || currentLvl >= item.limit) btn.disabled = true;
+        btn.onclick = () => buyItem(item);
+    });
+}
+
+function buyItem(item) {
+    if (userData.cookies >= item.cost && userData.purchases[item.id] < item.limit) {
+        userData.cookies -= item.cost;
+        userData.purchases[item.id]++;
+        
+        if(item.id === 'hpBoost') { player.maxHp += 30; player.hp += 30; }
+        if(item.id === 'dmgBoost') player.damage += 15;
+        if(item.id === 'critBoost') player.critChance += 0.1;
+        
+        updateShopUI();
+    }
+}
+
+// --- 게임 시작 및 루프 관리 ---
+function startGame(mode) {
+    gameState = 'playing';
+    gameMode = mode;
+    gameStartTime = Date.now();
+    totalPausedTime = 0;
+    rewardCount = 0; 
+    
+    player.x = screenWidth / 2;
+    player.y = screenHeight / 2;
+    player.hp = player.maxHp; 
+    
+    document.getElementById('kill-count').innerText = "0";
+    player.exp = 0;
+    player.level = 1;
+    player.expToNextLevel = 10;
+    player.artifacts = { doubleShot: false, splash: false, poison: false, freeze: false, leech: false, drone: false };
+
+    enemies = [];
+    bullets = [];
+    particles = [];
+    floatingTexts = [];
+    
+    document.getElementById('shop-screen').style.display = 'none';
+    document.getElementById('game-over-screen').style.display = 'none';
+    document.getElementById('ui-layer').style.display = 'block';
+    
+    // 모바일 키보드 버튼 표시
+    const mobileBtn = document.getElementById('mobile-kb-btn');
+    if (getComputedStyle(mobileBtn).display !== 'none') {
+        mobileBtn.style.display = 'flex';
+    }
+
+    updateArtifactList();
+    updateUI();
+}
+
+function retryGame() {
+    startGame(gameMode);
+}
+
+function goToLobby() {
+    document.getElementById('ui-layer').style.display = 'none';
+    openShop();
+}
+
+// --- 입력 처리 ---
+// 1. 모바일 가상 키보드 트리거
+document.getElementById('mobile-kb-btn').addEventListener('click', () => {
+    const input = document.getElementById('mobile-input-trigger');
+    input.focus();
+    input.click(); // 일부 브라우저 호환성을 위해 click 추가
+});
+
+// 2. 가상 키보드 입력 감지
+document.getElementById('mobile-input-trigger').addEventListener('input', (e) => {
+    if (e.target.value.length > 0) {
+        // 마지막 입력 글자를 가져와 대문자로 변환
+        const char = e.target.value.slice(-1).toUpperCase();
+        processTypingAttack(char);
+        e.target.value = ''; // 입력창 비우기
+    }
+});
+
+// 3. 물리 키보드 입력 감지
+window.addEventListener('keydown', e => {
+    if (gameState !== 'playing') return;
+    
+    let inputChar = null;
+    
+    // 매핑된 키 확인 (한글 자모 등)
+    if (codeToChar[e.code]) {
+        inputChar = codeToChar[e.code];
+    } else if (e.key.length === 1) {
+        const upper = e.key.toUpperCase();
+        // 영문, 숫자, 한글 범위 체크
+        if ((upper >= 'A' && upper <= 'Z') || (upper >= '0' && upper <= '9') || 
+            (e.key >= 'ㄱ' && e.key <= 'ㅎ') || (e.key >= 'ㅏ' && e.key <= 'ㅣ')) {
+            inputChar = upper;
+        }
+    }
+
+    if (inputChar) processTypingAttack(inputChar);
+});
+
+// --- 공격 로직 ---
+function processTypingAttack(char) {
+    // 해당 글자를 기다리는 적 검색
+    let targets = enemies.filter(e => !e.dead && e.getExpectedChar() === char);
+    if (targets.length === 0) return;
+    
+    // 가장 가까운 적 우선
+    targets.sort((a, b) => {
+        if (a.inputProgress > 0 && b.inputProgress === 0) return -1;
+        if (b.inputProgress > 0 && a.inputProgress === 0) return 1;
+        return Math.hypot(player.x - a.x, player.y - a.y) - Math.hypot(player.x - b.x, player.y - b.y);
+    });
+    
+    const target = targets[0];
+    target.inputProgress++;
+    createTypingEffect(player.x, player.y, target.x, target.y);
+    
+    // 정답 완성 시 발사
+    if (target.inputProgress >= target.answerString.length) {
+        // 플레이어 직접 공격: isDrone = false -> 문제 변경됨
+        fireHomingMissile(target, false);
+        
+        if (player.artifacts.doubleShot) {
+            setTimeout(() => fireHomingMissile(target, false), 100);
+        }
+        target.inputProgress = 0; 
+    }
+}
+
+function fireHomingMissile(target, isDrone = false) { 
+    bullets.push(new Bullet(player.x, player.y, target, isDrone)); 
+}
+
+function createTypingEffect(x1, y1, x2, y2) { particles.push(new Beam(x1, y1, x2, y2)); }
+
+// --- 유물 선택 시스템 ---
+function showArtifactSelection() {
+    gameState = 'artifact_select';
+    const container = document.getElementById('artifact-container');
+    container.innerHTML = '';
+    
+    // 보유하지 않은 유물 중 3개 랜덤 선택
+    let available = ARTIFACTS.filter(a => !player.artifacts[a.id]);
+    let options = available.sort(() => 0.5 - Math.random()).slice(0, 3);
+    
+    // 모두 보유했다면 체력 회복 옵션 제공
+    if (options.length === 0) {
+        options = [{ id: 'heal', name: '시스템 복구', icon: '❤️', desc: '체력을 모두 회복합니다.' }];
+    }
+
+    options.forEach(opt => {
+        const card = document.createElement('div');
+        card.className = 'artifact-card';
+        card.innerHTML = `
+            <div class="artifact-icon">${opt.icon}</div>
+            <div class="font-bold text-xl mb-2 kr-font">${opt.name}</div>
+            <div class="text-sm text-gray-300 kr-font">${opt.desc}</div>
+        `;
+        card.onclick = () => selectArtifact(opt);
+        container.appendChild(card);
+    });
+
+    document.getElementById('artifact-select-screen').style.display = 'flex';
+}
+
+function selectArtifact(opt) {
+    if (opt.id === 'heal') {
+        player.hp = player.maxHp;
+        floatingTexts.push(new FloatingText(player.x, player.y, "MAX HP!", '#0f0'));
+    } else {
+        player.artifacts[opt.id] = true;
+    }
+    
+    document.getElementById('artifact-select-screen').style.display = 'none';
+    updateArtifactList();
+    gameState = 'playing';
+}
+
+function updateArtifactList() {
+    const list = ARTIFACTS.filter(a => player.artifacts[a.id]).map(a => a.name);
+    document.getElementById('artifact-list').innerText = "보유: " + (list.length ? list.join(", ") : "없음");
+}
+
+// --- 게임 엔티티 클래스 ---
+const hangulList = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ','ㅏ','ㅑ','ㅓ','ㅕ','ㅗ','ㅛ','ㅜ','ㅠ','ㅡ','ㅣ'];
+const enemyTypes = {
+    normal: { hpMult: 1, spdMult: 1, color: '#f00', size: 15, shape: 'rect' },
+    fast: { hpMult: 0.6, spdMult: 1.6, color: '#ff4444', size: 10, shape: 'triangle' },
+    tank: { hpMult: 4.0, spdMult: 0.5, color: '#800000', size: 25, shape: 'square' }
+};
+
+class Enemy {
+    constructor() {
+        // 화면 가장자리에서 스폰
+        const edge = Math.floor(Math.random() * 4);
+        const padding = 60;
+        if (edge === 0) { this.x = Math.random()*screenWidth; this.y = -padding; }
+        else if (edge === 1) { this.x = screenWidth+padding; this.y = Math.random()*screenHeight; }
+        else if (edge === 2) { this.x = Math.random()*screenWidth; this.y = screenHeight+padding; }
+        else { this.x = -padding; this.y = Math.random()*screenHeight; }
+        
+        this.poisoned = false; this.poisonTimer = 0;
+        
+        const rand = Math.random();
+        if (rand < 0.15+(player.level*0.02)) this.type = enemyTypes.tank;
+        else if (rand < 0.4+(player.level*0.02)) this.type = enemyTypes.fast;
+        else this.type = enemyTypes.normal;
+        
+        this.id = Math.random();
+        this.radius = this.type.size;
+        
+        // 시간 경과에 따른 난이도 증가
+        const elapsedTimeMin = (Date.now() - gameStartTime - totalPausedTime) / 60000; 
+        const timeScale = 1 + (elapsedTimeMin * 1.5); 
+        const baseHp = (50 + (player.level * 15)) * timeScale;
+        
+        this.hp = baseHp * this.type.hpMult;
+        this.maxHp = this.hp;
+        
+        let baseSpeed = 0.5 + Math.random()*1.0 + (player.level*0.1);
+        if (player.artifacts.freeze) baseSpeed *= 0.8; 
+        this.speed = baseSpeed * this.type.spdMult;
+        
+        this.dead = false; this.inputProgress = 0;
+        this.generateQuestion();
+    }
+    
+    generateQuestion() {
+        if (gameMode === 'hangul') {
+            const char = hangulList[Math.floor(Math.random()*hangulList.length)];
+            this.questionString = char; this.answerString = char;
+        } else {
+            const a = Math.floor(Math.random()*8)+2; 
+            const b = Math.floor(Math.random()*9)+1;
+            this.questionString = `${a}x${b}`; this.answerString = (a*b).toString();
+        }
+    }
+
+    getExpectedChar() { return this.inputProgress >= this.answerString.length ? null : this.answerString[this.inputProgress]; }
+    
+    update() {
+        if (this.dead) return;
+
+        // 플레이어(중앙)를 향해 이동
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        this.x += Math.cos(angle) * this.speed;
+        this.y += Math.sin(angle) * this.speed;
+        
+        const dist = Math.hypot(player.x - this.x, player.y - this.y);
+        // 충돌 시 자폭 데미지
+        if (dist < player.radius + this.radius) {
+            const crashDamage = Math.floor(this.radius);
+            playerTakeDamage(crashDamage);
+            this.dead = true; 
+            for(let i=0; i<8; i++) {
+                particles.push(new Particle(this.x, this.y, this.type.color));
+            }
+        }
+        
+        if (this.poisoned) {
+            this.poisonTimer++;
+            if (this.poisonTimer % 60 === 0) {
+                // 독 데미지 (문제 변경 안함: scramble=false)
+                this.takeDamage(10, false, false);
+                floatingTexts.push(new FloatingText(this.x, this.y, "독", '#0f0'));
+            }
+        }
+    }
+    
+    takeDamage(amount, showEffect=true, scramble=true) {
+        let finalDamage = amount;
+        let isCrit = Math.random() < player.critChance;
+        if (isCrit) finalDamage *= 2;
+
+        this.hp -= finalDamage;
+        if (showEffect) {
+            floatingTexts.push(new FloatingText(this.x, this.y-20, isCrit ? "CRITICAL!" : "HIT", isCrit ? '#ff0' : '#fff'));
+            for(let i=0; i<3; i++) particles.push(new Particle(this.x, this.y, '#f00'));
+        }
+        if (player.artifacts.poison && !this.poisoned) this.poisoned = true;
+        
+        if (this.hp <= 0) {
+            this.die();
+        } else if (showEffect && scramble) {
+            // scramble이 true일 때만 문제 변경 (플레이어 직접 공격 시)
+            this.generateQuestion();
+            this.inputProgress = 0; 
+            floatingTexts.push(new FloatingText(this.x, this.y-40, "코드 변경", '#ff0'));
+        }
+    }
+    
+    die() {
+        if (this.dead) return;
+        this.dead = true;
+        player.exp += 10;
+        checkLevelUp();
+        document.getElementById('kill-count').innerText = parseInt(document.getElementById('kill-count').innerText) + 1;
+        if(player.artifacts.leech) {
+            player.hp = Math.min(player.maxHp, player.hp + 2);
+        }
+        for(let i=0; i<8; i++) particles.push(new Particle(this.x, this.y, '#f00'));
+        
+        if (player.artifacts.splash) {
+            enemies.forEach(e => {
+                if (!e.dead && e !== this) {
+                    const d = Math.hypot(e.x - this.x, e.y - this.y);
+                    // 스플래시 데미지는 문제 변경 안함
+                    if (d < 100) { e.takeDamage(player.damage * 0.5, true, false); particles.push(new Beam(this.x, this.y, e.x, e.y)); }
+                }
+            });
+        }
+    }
+    
+    draw(ctx) {
+        if (this.dead) return;
+        ctx.save(); ctx.translate(this.x, this.y);
+        ctx.fillStyle = this.poisoned ? '#008800' : '#000';
+        ctx.strokeStyle = this.type.color; ctx.lineWidth = 2;
+        ctx.beginPath();
+        if (this.type.shape === 'triangle') {
+            ctx.moveTo(0, -this.radius); ctx.lineTo(this.radius, this.radius); ctx.lineTo(-this.radius, this.radius); ctx.closePath();
+        } else {
+            ctx.rect(-this.radius, -this.radius, this.radius*2, this.radius*2);
+        }
+        ctx.fill(); ctx.stroke();
+        
+        // HP바 및 숫자
+        const barW = 30;
+        const barH = 4;
+        const hpRatio = Math.max(0, this.hp / this.maxHp);
+        const barY = this.radius + 10;
+        ctx.fillStyle = '#500'; ctx.fillRect(-barW/2, barY, barW, barH);
+        ctx.fillStyle = '#0f0'; ctx.fillRect(-barW/2, barY, barW * hpRatio, barH);
+        ctx.fillStyle = '#fff'; ctx.font = '12px "VT323"'; ctx.textAlign = 'center';
+        ctx.fillText(Math.ceil(this.hp), 0, barY + 15);
+
+        // 문제 텍스트
+        ctx.textAlign = 'center'; ctx.font = 'bold 20px "Noto Sans KR", monospace';
+        const textWidth = ctx.measureText(this.questionString).width;
+        ctx.fillStyle = 'rgba(20, 0, 0, 0.8)';
+        ctx.fillRect(-textWidth/2 - 5, -45, textWidth+10, 25);
+        ctx.fillStyle = '#0f0';
+        ctx.fillText(this.questionString, 0, -26);
+        if (this.inputProgress > 0) {
+            ctx.fillStyle = '#333'; ctx.fillRect(-15, -18, 30, 4);
+            ctx.fillStyle = '#0f0'; ctx.fillRect(-15, -18, 30 * (this.inputProgress / this.answerString.length), 4);
+        }
+        ctx.restore();
+    }
+}
+
+class Bullet {
+    constructor(x, y, target, isDrone = false) {
+        this.x = x; this.y = y; this.target = target;
+        this.speed = player.projectileSpeed;
+        this.radius = 4; this.life = 100; this.trail = [];
+        this.isDrone = isDrone;
+    }
+    update() {
+        if (this.target.dead) { this.life = 0; return; }
+        const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+        this.x += Math.cos(angle) * this.speed;
+        this.y += Math.sin(angle) * this.speed;
+        this.trail.push({x: this.x, y: this.y});
+        if(this.trail.length > 5) this.trail.shift();
+
+        const dist = Math.hypot(this.x - this.target.x, this.y - this.target.y);
+        if (dist < this.target.radius + this.radius + 2) { 
+            // 드론 공격이면 scramble=false, 아니면 true
+            this.target.takeDamage(player.damage, true, !this.isDrone);
+            this.life = 0;
+        }
+    }
+    draw(ctx) {
+        ctx.strokeStyle = this.isDrone ? '#aaf' : '#0f0'; 
+        ctx.lineWidth = 2; ctx.beginPath();
+        if(this.trail.length > 0) {
+            ctx.moveTo(this.trail[0].x, this.trail[0].y);
+            for(let p of this.trail) ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fill();
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random()-0.5)*4; this.vy = (Math.random()-0.5)*4;
+        this.life = 1.0; this.color = color;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.life -= 0.05; }
+    draw(ctx) { ctx.globalAlpha = this.life; ctx.fillStyle = this.color; ctx.fillRect(this.x, this.y, 3, 3); ctx.globalAlpha = 1.0; }
+}
+class Beam {
+    constructor(x1, y1, x2, y2) { this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2; this.life = 1.0; }
+    update() { this.life -= 0.15; }
+    draw(ctx) { ctx.strokeStyle = `rgba(0, 255, 0, ${this.life})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(this.x1, this.y1); ctx.lineTo(this.x2, this.y2); ctx.stroke(); }
+}
+class FloatingText {
+    constructor(x, y, text, color) { this.x = x; this.y = y; this.text = text; this.color = color; this.life = 1.0; }
+    update() { this.y -= 1; this.life -= 0.03; }
+    draw(ctx) { ctx.globalAlpha = Math.max(0, this.life); ctx.fillStyle = this.color; ctx.font = '14px "Noto Sans KR"'; ctx.fillText(this.text, this.x, this.y); ctx.globalAlpha = 1.0; }
+}
+
+function playerTakeDamage(amount) {
+    if (player.invincibleTimer > 0) return;
+    player.hp -= amount; player.invincibleTimer = 60; 
+    const overlay = document.getElementById('damage-overlay');
+    overlay.style.opacity = 0.5; setTimeout(() => overlay.style.opacity = 0, 100);
+    
+    if (player.hp <= 0) {
+        gameState = 'game_over';
+        document.getElementById('final-score').innerText = document.getElementById('kill-count').innerText;
+        document.getElementById('game-over-screen').style.display = 'flex';
+        document.getElementById('ui-layer').style.display = 'none';
+        document.getElementById('mobile-kb-btn').style.display = 'none';
+    }
+}
+
+function update() {
+    if (gameState !== 'playing') return;
+    
+    const elapsed = Date.now() - gameStartTime - totalPausedTime; 
+    const remaining = Math.max(0, GAME_DURATION - elapsed);
+    const min = Math.floor(remaining / 60000);
+    const sec = Math.floor((remaining % 60000) / 1000);
+    document.getElementById('timer-display').innerText = `${min.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
+    
+    if (remaining <= 0) {
+        alert("시스템 방어 성공! 훌륭합니다!");
+        goToLobby();
+        return;
+    }
+
+    // 1분마다 유물 자동 지급
+    const currentMinute = Math.floor(elapsed / 60000); 
+    if (currentMinute > rewardCount && currentMinute < 5) {
+        rewardCount++;
+        showArtifactSelection();
+    }
+
+    if (player.artifacts.drone) {
+        const now = Date.now();
+        if (now - lastDroneShot > 1000) { 
+            let minDist = Infinity;
+            let target = null;
+            enemies.forEach(e => {
+                if(!e.dead) {
+                    const d = Math.hypot(e.x - player.x, e.y - player.y);
+                    if(d < minDist) { minDist = d; target = e; }
+                }
+            });
+            if (target) {
+                // 드론 공격 (문제 변경 X)
+                fireHomingMissile(target, true);
+                lastDroneShot = now;
+            }
+        }
+    }
+
+    if (player.invincibleTimer > 0) player.invincibleTimer--;
+
+    // 몬스터 스폰 (약 2.5초마다)
+    if (frameCount % 150 === 0 && enemies.length < 20) {
+        enemies.push(new Enemy());
+    }
+
+    bullets.forEach((b, i) => { b.update(); if (b.life <= 0) bullets.splice(i, 1); });
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i]; e.update();
+        if (e.dead && !particles.some(p => p.life > 0)) enemies.splice(i, 1);
+        else if (e.dead) enemies.splice(i, 1);
+    }
+    particles = particles.filter(p => p.life > 0); particles.forEach(p => p.update());
+    floatingTexts = floatingTexts.filter(t => t.life > 0); floatingTexts.forEach(t => t.update());
+    updateUI();
+    frameCount++;
+}
+
+function checkLevelUp() {
+    if (player.exp >= player.expToNextLevel) {
+        player.level++; player.exp -= player.expToNextLevel;
+        player.expToNextLevel = Math.floor(player.expToNextLevel * 1.5);
+        showUpgradeMenu();
+    }
+}
+function showUpgradeMenu() {
+    gameState = 'leveled_up';
+    const menu = document.getElementById('upgrade-menu');
+    const optionsDiv = document.getElementById('upgrade-options');
+    optionsDiv.innerHTML = '';
+    const upgrades = [
+        { name: "공격력 증가", desc: "공격력 +25", apply: () => player.damage += 25 },
+        { name: "속도 증가", desc: "투사체 속도 +5", apply: () => player.projectileSpeed += 5 },
+        { name: "긴급 복구", desc: "체력 30 회복", apply: () => player.hp = Math.min(player.maxHp, player.hp + 30) }
+    ];
+    upgrades.forEach(up => {
+        const div = document.createElement('div');
+        div.className = 'upgrade-card-lvl';
+        div.innerHTML = `<div class="font-bold text-lg kr-font">${up.name}</div><div class="text-sm opacity-80 kr-font">${up.desc}</div>`;
+        div.onclick = () => { up.apply(); menu.style.display = 'none'; gameState = 'playing'; };
+        optionsDiv.appendChild(div);
+    });
+    menu.style.display = 'block';
+}
+function updateUI() {
+    const expBar = document.getElementById('exp-bar');
+    expBar.style.width = `${Math.min(100, (player.exp / player.expToNextLevel) * 100)}%`;
+    const hpBar = document.getElementById('hp-bar');
+    hpBar.style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`;
+    document.getElementById('level-display').innerText = player.level;
+}
+function loop() {
+    requestAnimationFrame(loop);
+    
+    // 일시 정지 시간 관리
+    if (gameState === 'artifact_select' || gameState === 'leveled_up') {
+        if (pauseStartTime === 0) pauseStartTime = Date.now();
+    } else if (pauseStartTime !== 0) {
+        totalPausedTime += Date.now() - pauseStartTime;
+        pauseStartTime = 0;
+    }
+
+    if (gameState === 'login' || gameState === 'shop' || gameState === 'game_over') { 
+        drawMatrixBackground(); 
+        return; 
+    }
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, 0, screenWidth, screenHeight);
+    ctx.strokeStyle = '#003300'; ctx.lineWidth = 1;
+    for (let x = 0; x < screenWidth; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, screenHeight); ctx.stroke(); }
+    for (let y = 0; y < screenHeight; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(screenWidth, y); ctx.stroke(); }
+    
+    if (gameState === 'playing') {
+        update();
+    }
+    
+    enemies.forEach(e => e.draw(ctx));
+    bullets.forEach(b => b.draw(ctx));
+    particles.forEach(p => p.draw(ctx));
+    floatingTexts.forEach(t => t.draw(ctx));
+    
+    ctx.save(); ctx.translate(player.x, player.y);
+    ctx.fillStyle = player.invincibleTimer > 0 && Math.floor(Date.now()/50)%2===0 ? '#555' : '#000';
+    ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    // 플레이어 중앙 고정 아이콘 (자물쇠 모양)
+    ctx.fillStyle = '#0f0'; ctx.fillRect(-6, -6, 12, 12);
+    ctx.restore();
+}
+function drawMatrixBackground() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; ctx.fillRect(0, 0, screenWidth, screenHeight);
+    ctx.fillStyle = '#0f0'; ctx.font = '20px VT323';
+    for(let i=0; i<screenWidth/20; i++) { if(Math.random() > 0.95) ctx.fillText(String.fromCharCode(0x30A0 + Math.random()*96), i*20, Math.random()*screenHeight); }
+}
+loop();
+</script>
+</body>
+</html>
